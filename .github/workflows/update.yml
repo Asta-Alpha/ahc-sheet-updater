@@ -1,9 +1,9 @@
 name: Update Sheet
 
 on:
-  schedule:
-    - cron: "0 0 * * *"   # Runs daily at midnight UTC
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   update:
@@ -16,10 +16,10 @@ jobs:
         with:
           node-version: 18
 
-      - run: npm install
+      - run: npm install googleapis axios
 
       - run: node update.js
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          AHC_TOKEN: ${{ secrets.AHC_TOKEN }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
+          AHC_TOKEN: ${{ secrets.AHC_TOKEN }}
