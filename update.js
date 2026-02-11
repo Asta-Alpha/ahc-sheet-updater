@@ -5,75 +5,69 @@ const TOKEN = process.env.AHC_TOKEN;
 const SHEET_ID = process.env.SHEET_ID;
 
 async function main() {
+  try {
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
 
-  if (!TOKEN) {
-    console.log("❌ AHC_TOKEN not found");
-    return;
-  }
+    const sheets = google.sheets({ version: "v4", auth });
 
-  if (!SHEET_ID) {
-    console.log("❌ SHEET_ID not found");
-    return;
-  }
+    console.log("Connected to Google Sheets");
 
-  if (!process.env.GOOGLE_CREDENTIALS) {
-    console.log("❌ GOOGLE_CREDENTIALS not found");
-    return;
-  }
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: "Josh!A2:I",
+    });
 
-  const auth = new google.auth.GoogleAuth({
-    credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
+    const rows = response.data.values || [];
+    console.log("Total rows:", rows.length);
 
-  const sheets = google.sheets({ version: "v4", auth });
+    for (let i = 0; i < rows.length; i++) {
+      const bookingId = rows[i][1];
 
-  console.log("✅ Connected to Google Sheets");
+      if (!bookingId) continue;
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: "Josh!A2:I",
-  });
+      try {
+        const api = await axios.get(
+          `https://ahc.one/ahc/bookings/get/${bookingId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${TOKEN}`,
+            },
+          }
+        );
 
-  const rows = response.data.values || [];
+        // 🔥 Corrected Status Path (covers all possible structures)
+        const status =
+          api.data?.data?.bookingStatus ||
+          api.data?.data?.booking?.bookingStatus ||
+          api.data?.bookingStatus ||
+          api.data?.status ||
+          "NO_STATUS";
 
-  console.log("Total rows:", rows.length);
-
-  for (let i = 0; i < rows.length; i++) {
-    const bookingId = rows[i][1];
-    if (!bookingId) continue;
-
-    try {
-      const api = await axios.get(
-        `https://ahc.one/ahc/bookings/get/${bookingId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${TOKEN}`,
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SHEET_ID,
+          range: `Josh!I${i + 2}`,
+          valueInputOption: "RAW",
+          requestBody: {
+            values: [[status]],
           },
-        }
-      );
+        });
 
-      const status =
-        api.data?.data?.booking?.bookingStatus || "NO_STATUS";
+        console.log(`Updated row ${i + 2} → ${status}`);
 
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SHEET_ID,
-        range: `Josh!I${i + 2}`,
-        valueInputOption: "RAW",
-        requestBody: {
-          values: [[status]],
-        },
-      });
-
-      console.log("✅ Updated row", i + 2);
-
-    } catch (e) {
-      console.log("❌ Error on row", i + 2);
-      console.log(e.response?.data || e.message);
+      } catch (error) {
+        console.log(`Error on row ${i + 2}`);
+        console.log(error.response?.data || error.message);
+      }
     }
-  }
 
-  console.log("🎉 Done");
+    console.log("Update completed successfully ✅");
+
+  } catch (err) {
+    console.error("Fatal Error:", err.message);
+  }
 }
 
 main();
